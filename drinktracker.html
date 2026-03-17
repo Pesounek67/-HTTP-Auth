@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drink Tracker</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: #0a0a0a;
+    color: white;
+    font-family: Arial, sans-serif;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 30px 16px 60px;
+}
+
+h1 { color: #53FC18; font-size: 36px; letter-spacing: 4px; margin-bottom: 4px; }
+.sub { color: white; font-size: 12px; letter-spacing: 2px; margin-bottom: 28px; }
+.label { color: #53FC18; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; display: block; }
+
+.picker { position: relative; margin-bottom: 20px; }
+.picker-btn {
+    width: 100%;
+    background: #111;
+    border: 2px solid #222;
+    border-radius: 14px;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 20px 18px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.picker-btn.open { border-color: #53FC18; border-radius: 14px 14px 0 0; }
+.picker-btn .arrow { color: #53FC18; transition: transform .2s; }
+.picker-btn.open .arrow { transform: rotate(180deg); }
+.picker-btn .hint { color: white; font-weight: normal; font-size: 16px; }
+
+.picker-list {
+    display: none;
+    position: absolute;
+    left: 0; right: 0;
+    background: #111;
+    border: 2px solid #53FC18;
+    border-top: none;
+    border-radius: 0 0 14px 14px;
+    z-index: 10;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.picker-list.open { display: block; }
+.picker-item {
+    padding: 20px 18px;
+    font-size: 18px;
+    font-weight: bold;
+    border-bottom: 1px solid #1a1a1a;
+    cursor: pointer;
+}
+.picker-item:last-child { border-bottom: none; }
+.picker-item:active { background: rgba(83,252,24,0.1); }
+.picker-item.active { color: #53FC18; }
+
+.drink-card { background: #111; border: 2px solid #222; border-radius: 16px; padding: 16px; margin-bottom: 10px; }
+.card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.card-title { color: white; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; }
+.del-btn { background: rgba(255,60,60,0.1); border: 1px solid rgba(255,60,60,0.3); border-radius: 8px; color: #ff5555; width: 36px; height: 36px; cursor: pointer; font-size: 14px; }
+
+.drink-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.tile { background: #0a0a0a; border: 2px solid #222; border-radius: 12px; padding: 14px 6px; text-align: center; cursor: pointer; font-size: 11px; font-weight: bold; }
+.tile .ico { font-size: 26px; display: block; margin-bottom: 5px; }
+.tile:active { background: rgba(83,252,24,0.1); }
+.tile.active { border-color: #53FC18; color: #53FC18; }
+
+.qty-row { display: flex; border: 2px solid #222; border-radius: 12px; overflow: hidden; }
+.qty-btn { flex: 1; height: 54px; background: none; border: none; color: #53FC18; font-size: 28px; cursor: pointer; }
+.qty-btn:active { background: rgba(83,252,24,0.1); }
+.qty-num { flex: 1; height: 54px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; border-left: 2px solid #222; border-right: 2px solid #222; }
+
+.add-btn { width: 100%; padding: 16px; background: none; border: 2px dashed rgba(83,252,24,0.3); border-radius: 14px; color: #53FC18; font-size: 15px; font-weight: bold; cursor: pointer; margin-bottom: 20px; }
+.send-btn { width: 100%; padding: 20px; background: #53FC18; border: none; border-radius: 16px; color: black; font-size: 20px; font-weight: bold; letter-spacing: 2px; cursor: pointer; }
+.send-btn:disabled { opacity: 0.4; }
+
+.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px); background: #111; border: 2px solid #53FC18; border-radius: 12px; padding: 14px 24px; color: #53FC18; font-size: 14px; font-weight: bold; opacity: 0; transition: all .3s; z-index: 99; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.err { color: #ff5555; border-color: #ff5555; }
+</style>
+
+<script>
+var mojeApi = 'http://lmpss3.dev.spsejecna.net/procedure2.php';
+var typyNapoju = [];
+var selected_user = '';
+var authHlavicka = '';
+
+function udelat_auth(u, p) {
+    return "Basic " + btoa(u + ":" + p);
+}
+
+window.onload = async function() {
+    let jmenoZadani = prompt("Zadej přihlašovací jméno (zkus coffe):", "");
+    let hesloZadani = prompt("Zadej heslo (zkus kafe):", "");
+    
+    if(jmenoZadani == null) jmenoZadani = "";
+    if(hesloZadani == null) hesloZadani = "";
+    
+    authHlavicka = udelat_auth(jmenoZadani, hesloZadani);
+
+    try {
+        let lidiOdpoved = await fetch(mojeApi + '?cmd=getPeopleList', {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Authorization': authHlavicka }
+        });
+        
+        let dataLidi = await lidiOdpoved.json();
+        let poleLidi = Object.values(dataLidi);
+        let seznamDiv = document.getElementById('userList');
+        
+        poleLidi.forEach(function(clovek) {
+            let itemDiv = document.createElement('div');
+            itemDiv.className = 'picker-item';
+            itemDiv.innerHTML = clovek.name;
+            
+            itemDiv.onclick = function() {
+                selected_user = clovek.ID;
+                document.getElementById('userLabel').innerHTML = clovek.name;
+                document.getElementById('userLabel').className = '';
+                
+                let polozky = seznamDiv.querySelectorAll('.picker-item');
+                for(let i = 0; i < polozky.length; i++) {
+                    polozky[i].classList.remove('active');
+                }
+                itemDiv.classList.add('active');
+                schovejUkazLidi();
+            };
+            seznamDiv.appendChild(itemDiv);
+        });
+
+        let typyOdpoved = await fetch(mojeApi + '?cmd=getTypesList', {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'Authorization': authHlavicka }
+        });
+        
+        let dataTypy = await typyOdpoved.json();
+        typyNapoju = Object.values(dataTypy);
+        
+        pridejKarku();
+
+    } catch (chyba) {
+        console.log("Kurnik neco neslo: ", chyba);
+        ukazZpravu('❌ Neslo nacist data, asi spatny heslo', true);
+    }
+};
+
+function schovejUkazLidi() {
+    document.querySelector('.picker-btn').classList.toggle('open');
+    document.getElementById('userList').classList.toggle('open');
+}
+
+document.addEventListener('click', function(e) {
+    if (!document.getElementById('userPicker').contains(e.target)) {
+        document.querySelector('.picker-btn').classList.remove('open');
+        document.getElementById('userList').classList.remove('open');
+    }
+});
+
+function ukazZpravu(text, jeToChyba) {
+    let box = document.getElementById('toast');
+    box.innerHTML = text;
+    if (jeToChyba) {
+        box.className = 'toast err show';
+    } else {
+        box.className = 'toast show';
+    }
+    setTimeout(function() { box.classList.remove('show'); }, 3000);
+}
+
+function dejIkonku(nazev) {
+    let n = nazev.toLowerCase();
+    if (n.includes('pivo')) return '🍺';
+    if (n.includes('vino') || n.includes('víno')) return '🍷';
+    if (n.includes('kava') || n.includes('espresso') || n.includes('coffe')) return '☕';
+    if (n.includes('voda')) return '💧';
+    if (n.includes('caj') || n.includes('čaj')) return '🍵';
+    if (n.includes('energy')) return '⚡';
+    return '🥤';
+}
+
+function pridejKarku() {
+    let obal = document.getElementById('drinkCards');
+    let pocetKaret = obal.querySelectorAll('.drink-card').length + 1;
+    let vybrany_typ = '';
+    let kolikTohoMa = 1;
+
+    let novaKarta = document.createElement('div');
+    novaKarta.className = 'drink-card';
+    novaKarta.innerHTML = '<div class="card-top"><span class="card-title">NÁPOJ ' + pocetKaret + '</span><button class="del-btn">✕</button></div><div class="drink-tiles"></div><div class="qty-row"><button class="qty-btn">−</button><div class="qty-num">1</div><button class="qty-btn">+</button></div>';
+
+    novaKarta.querySelector('.del-btn').onclick = function() {
+        if (document.querySelectorAll('.drink-card').length > 1) novaKarta.remove();
+    };
+
+    let mrizka = novaKarta.querySelector('.drink-tiles');
+    for(let t = 0; t < typyNapoju.length; t++) {
+        let typ = typyNapoju[t];
+        let kostka = document.createElement('div');
+        kostka.className = 'tile';
+        kostka.innerHTML = '<span class="ico">' + dejIkonku(typ.typ) + '</span>' + typ.typ;
+        
+        kostka.onclick = function() {
+            let vsechnyKostky = mrizka.querySelectorAll('.tile');
+            for(let j = 0; j < vsechnyKostky.length; j++) {
+                vsechnyKostky[j].classList.remove('active');
+            }
+            kostka.classList.add('active');
+            vybrany_typ = typ.ID;
+        };
+        mrizka.appendChild(kostka);
+    }
+
+    let cisloUkazatel = novaKarta.querySelector('.qty-num');
+    let butony = novaKarta.querySelectorAll('.qty-btn');
+    butony[0].onclick = function() { if (kolikTohoMa > 0) { kolikTohoMa--; cisloUkazatel.innerHTML = kolikTohoMa; } };
+    butony[1].onclick = function() { kolikTohoMa++; cisloUkazatel.innerHTML = kolikTohoMa; };
+
+    novaKarta.vratMiData = function() { return { idTypu: vybrany_typ, mnozstvi: kolikTohoMa }; };
+    obal.appendChild(novaKarta);
+}
+
+async function odeslatData() {
+    if (selected_user == '') { ukazZpravu('Vyberte uživatele!', true); return; }
+
+    let poleNaOdeslani = [];
+    let kartyVeVypisu = document.querySelectorAll('.drink-card');
+    
+    for(let k = 0; k < kartyVeVypisu.length; k++) {
+        let info = kartyVeVypisu[k].vratMiData();
+        if (info.idTypu != '' && info.mnozstvi > 0) {
+            poleNaOdeslani.push(info);
+        }
+    }
+
+    if (poleNaOdeslani.length == 0) { ukazZpravu('Vyberte nápoj!', true); return; }
+
+    let btn = document.getElementById('sendBtn');
+    btn.disabled = true;
+    btn.innerHTML = 'ODESÍLÁM...';
+
+    let dnesniDatum = new Date().toISOString().split('T')[0];
+    let payload = [];
+    
+    for(let x = 0; x < poleNaOdeslani.length; x++) {
+        payload.push({
+            id_person: selected_user,
+            id_drink_type: poleNaOdeslani[x].idTypu,
+            amount: poleNaOdeslani[x].mnozstvi,
+            date: dnesniDatum
+        });
+    }
+
+    try {
+        let posilaniOdpoved = await fetch(mojeApi + '?cmd=saveDrinks', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': authHlavicka
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!posilaniOdpoved.ok) throw new Error("Chybicka se vloudila");
+        
+        await posilaniOdpoved.json(); 
+        ukazZpravu('✅ Úspěšně odesláno!');
+        
+        selected_user = '';
+        document.getElementById('userLabel').innerHTML = '— Vyberte uživatele —';
+        document.getElementById('userLabel').className = 'hint';
+        
+        let vsechnyOsoby = document.getElementById('userList').querySelectorAll('.picker-item');
+        for(let l = 0; l < vsechnyOsoby.length; l++) {
+            vsechnyOsoby[l].classList.remove('active');
+        }
+        
+        document.getElementById('drinkCards').innerHTML = '';
+        pridejKarku();
+        
+    } catch (e) {
+        console.log(e);
+        ukazZpravu('❌ Neco se podelalo pri odesilani', true);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'ODESLAT';
+    }
+}
+</script>
+</head>
+<body>
+
+<h1>⚡ KICK</h1>
+<div class="sub">DRINK TRACKER</div>
+
+<span class="label">Kdo pil?</span>
+<div class="picker" id="userPicker">
+    <button class="picker-btn" onclick="schovejUkazLidi()">
+        <span id="userLabel" class="hint">— Vyberte uživatele —</span>
+        <span class="arrow">▾</span>
+    </button>
+    <div class="picker-list" id="userList"></div>
+</div>
+
+<span class="label">Co pil?</span>
+<div id="drinkCards"></div>
+<button class="add-btn" onclick="pridejKarku()">＋ Přidat nápoj</button>
+
+<button class="send-btn" id="sendBtn" onclick="odeslatData()">ODESLAT</button>
+
+<div class="toast" id="toast"></div>
+
+</body>
+</html>
